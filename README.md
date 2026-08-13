@@ -1,0 +1,1 @@
+# ertekesitesi-teruletek
