@@ -1,0 +1,148 @@
+<!doctype html><html lang="hu"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Szerkeszthető értékesítési térkép v2</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
+<style>
+html,body,#map{height:100%;margin:0}
+.top{position:absolute;z-index:1000;top:10px;left:50px;background:#fff;padding:10px 12px;border-radius:7px;box-shadow:0 1px 7px #777;font:13px Arial;max-width:700px}
+button{margin:4px 4px 0 0;padding:7px 10px}.ok{font-weight:bold;color:#075eb5}
+.small{font-size:12px;color:#444;margin-top:5px}
+</style></head><body>
+<div class="top">
+<span class="ok">Szerkeszthető értékesítési térkép v2</span><br>
+A pontokat megfogva mozgathatod a határvonalat. Új határhoz válaszd a bal oldali vonalrajzolást.
+<br>
+<button id="saveLocal">Mentés ezen a gépen</button>
+<button id="loadLocal">Mentett állapot betöltése</button>
+<button id="openGeo">GeoJSON megnyitása</button>
+<button id="downloadGeo">GeoJSON letöltése</button>
+<button id="reset">Kiinduló állapot</button>
+<input id="geoFile" type="file" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+<div class="small">Javasolt munkamenet: GeoJSON megnyitása → szerkesztés → GeoJSON letöltése.</div>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+<script>
+const map=L.map('map').setView([47.35,19.75],7);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap közreműködők'}).addTo(map);
+const group=L.featureGroup().addTo(map);
+
+function addLine(coords,color='#0066cc'){
+  const l=L.polyline(coords,{color,weight:5,opacity:.93,pmIgnore:false});
+  l.feature={type:'Feature',properties:{color}};
+  l.addTo(group);
+  return l;
+}
+
+const initial=[
+[[48.07,18.82],[48.02,18.80],[47.96,18.80],[47.90,18.82],[47.827,18.87],[47.80,18.89],[47.76,18.91],[47.71,18.92],[47.66,18.96],[47.62,19.00],[47.59,19.02],[47.57,18.99],[47.56,18.94],[47.55,18.88],[47.52,18.82],[47.49,18.78],[47.45,18.76],[47.40,18.75],[47.35,18.76],[47.31,18.76],[47.27,18.79],[47.23,18.84],[47.20,18.91]],
+[[47.20,18.91],[47.15,18.91],[47.10,18.92],[47.05,18.94],[47.00,18.96],[46.95,18.98],[46.90,18.99],[46.91,19.10],[46.93,19.22],[46.96,19.34],[46.99,19.45],[47.02,19.55],[47.05,19.62],[47.12,19.64],[47.19,19.66],[47.245,19.68],[47.27,19.92],[47.29,20.07],[47.37,20.63],[47.51,20.82],[47.57,21.10],[47.66,21.35],[47.78,21.55],[47.80,21.75],[47.78,21.98],[47.72,22.18],[47.64,22.38],[47.58,22.62],[47.56,22.88]]
+];
+
+function resetMap(){
+  group.clearLayers();
+  initial.forEach(x=>addLine(x));
+}
+resetMap();
+
+map.pm.addControls({
+  position:'topleft',
+  drawMarker:false,drawCircleMarker:false,drawCircle:false,drawRectangle:false,
+  drawPolygon:true,drawPolyline:true,drawText:false,
+  editMode:true,dragMode:true,cutPolygon:false,removalMode:true,rotateMode:false
+});
+map.pm.setGlobalOptions({snappable:true,snapDistance:15});
+
+map.on('pm:create',e=>{
+  if(!e.layer) return;
+  if(e.layer.setStyle) e.layer.setStyle({color:'#d43f3a',weight:5,opacity:.93});
+  e.layer.feature={type:'Feature',properties:{color:'#d43f3a'}};
+  group.addLayer(e.layer);
+});
+
+function exportData(){
+  const gj=group.toGeoJSON();
+  // Preserve layer colors where possible.
+  let i=0;
+  group.eachLayer(layer=>{
+    if(gj.features[i]){
+      gj.features[i].properties=gj.features[i].properties||{};
+      if(layer.options && layer.options.color) gj.features[i].properties.color=layer.options.color;
+    }
+    i++;
+  });
+  return gj;
+}
+
+function saveLocal(){
+  localStorage.setItem('salesTerritoryMapV2',JSON.stringify(exportData()));
+  alert('Elmentve ezen a gépen és ebben a böngészőben.');
+}
+
+function renderGeoJSON(obj){
+  group.clearLayers();
+  L.geoJSON(obj,{
+    style:f=>({color:(f.properties&&f.properties.color)||'#0066cc',weight:5,opacity:.93}),
+    onEachFeature:(f,l)=>{
+      l.feature=f;
+      if(l.setStyle && f.properties && f.properties.color) l.setStyle({color:f.properties.color,weight:5,opacity:.93});
+      group.addLayer(l);
+    }
+  });
+  try{ map.fitBounds(group.getBounds(),{padding:[20,20]}); }catch(e){}
+}
+
+function loadLocal(){
+  const s=localStorage.getItem('salesTerritoryMapV2');
+  if(!s){alert('Nincs mentett állapot ezen a gépen.');return;}
+  renderGeoJSON(JSON.parse(s));
+}
+
+function downloadGeoJSON(){
+  const blob=new Blob([JSON.stringify(exportData(),null,2)],{type:'application/geo+json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ertekesitesi-teruletek.geojson';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+document.getElementById('saveLocal').addEventListener('click',saveLocal);
+document.getElementById('loadLocal').addEventListener('click',loadLocal);
+document.getElementById('downloadGeo').addEventListener('click',downloadGeoJSON);
+document.getElementById('reset').addEventListener('click',()=>{if(confirm('Visszaállítsam a kiinduló állapotot?'))resetMap();});
+document.getElementById('openGeo').addEventListener('click',()=>document.getElementById('geoFile').click());
+document.getElementById('geoFile').addEventListener('change',ev=>{
+  const file=ev.target.files && ev.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const obj=JSON.parse(reader.result);
+      renderGeoJSON(obj);
+      alert('GeoJSON betöltve. Most tovább szerkesztheted.');
+    }catch(err){alert('A fájl nem olvasható GeoJSON-ként.');}
+  };
+  reader.readAsText(file,'utf-8');
+  ev.target.value='';
+});
+
+// GitHub Pages: automatikusan betölti a repositoryban lévő közös munkatérképet.
+async function loadSharedGeoJSON(){
+  try{
+    const response = await fetch('./ertekesitesi-teruletek-v01.geojson', {cache:'no-store'});
+    if(!response.ok) throw new Error('HTTP '+response.status);
+    const obj = await response.json();
+    renderGeoJSON(obj);
+    console.log('Közös GeoJSON betöltve.');
+  }catch(err){
+    console.warn('A közös GeoJSON nem tölthető be; a kiinduló térkép marad.', err);
+  }
+}
+window.addEventListener('load', loadSharedGeoJSON);
+
+</script></body></html>
