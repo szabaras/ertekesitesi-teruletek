@@ -134,7 +134,7 @@ document.getElementById('geoFile').addEventListener('change',ev=>{
 // GitHub Pages: automatikusan betölti a repositoryban lévő közös munkatérképet.
 async function loadSharedGeoJSON(){
   try{
-    const response = await fetch('./ertekesitesi-teruletek.teljes.geojson', {cache:'no-store'});
+    const response = await fetch('./ertekesitesi-teruletek.geojson', {cache:'no-store'});
     if(!response.ok) throw new Error('HTTP '+response.status);
     const obj = await response.json();
     renderGeoJSON(obj);
